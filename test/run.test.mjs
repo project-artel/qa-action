@@ -130,6 +130,21 @@ test('필수 입력과 유한 timeout 을 검사한다', t => {
     QA_CLI_PATH: 'cli', QA_RESULTS_PATH: dir,
   };
   assert.equal(readOptions(env).build, path.join(dir, 'game'));
+  assert.equal(readOptions(env).arch, undefined);
+  const planner = { engine: 'planner_executer' };
+  writeFileSync(path.join(dir, 'agent config.json'), JSON.stringify(planner));
+  assert.deepEqual(JSON.parse(readOptions({ ...env, QA_ARCH: '@agent config.json' }).arch), planner);
+  assert.deepEqual(JSON.parse(readOptions({ ...env, QA_ARCH: '{"new_option":false}' }).arch), { new_option: false });
+  for (const arch of ['null', '[]', '"text"', '{broken']) {
+    assert.throws(() => readOptions({ ...env, QA_ARCH: arch }), /arch/);
+  }
+  assert.throws(() => readOptions({ ...env, QA_ARCH: '@missing.json' }));
+  assert.throws(() => readOptions({ ...env, QA_REASONING_EFFORT: 'high', QA_REASONING_MAX_TOKENS: '1024' }), /one reasoning/);
+  for (const budget of ['0', '-1', '1.2', 'NaN']) {
+    assert.throws(() => readOptions({ ...env, QA_REASONING_MAX_TOKENS: budget }), /positive/);
+  }
+  assert.throws(() => readOptions({ ...env, QA_CONTENT_MAP_MODE: 'bad' }), /QA_CONTENT_MAP_MODE/);
+  assert.throws(() => readOptions({ ...env, QA_KNOWLEDGE_MODE: 'bad' }), /QA_KNOWLEDGE_MODE/);
   for (const bad of ['0', '-1', 'Infinity', '1.5', '90000']) {
     assert.throws(() => readOptions({ ...env, QA_TIMEOUT: bad }));
   }

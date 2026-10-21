@@ -19,6 +19,24 @@ inputs:
   model:
     description: ARTEL QA model ID. Leave empty to use the server default.
     default: ''
+  arch:
+    description: Agent architecture JSON object, or @path to a JSON file relative to the workspace. Empty uses server defaults.
+    default: ''
+  prompt-version:
+    description: Optional QA prompt version.
+    default: ''
+  reasoning-effort:
+    description: Optional reasoning effort supported by the selected model. Cannot be combined with reasoning-max-tokens.
+    default: ''
+  reasoning-max-tokens:
+    description: Optional positive reasoning token budget. Cannot be combined with reasoning-effort.
+    default: ''
+  content-map-mode:
+    description: Optional content map access mode (on, frozen, off).
+    default: ''
+  knowledge-mode:
+    description: Optional knowledge access mode (learning, frozen, off).
+    default: ''
   api-url:
     description: ARTEL orchestration API URL.
     default: https://stage-orch.artel.kr
@@ -81,6 +99,12 @@ runs:
         QA_TEST_RUN_ID: ${{ inputs.test-run-id }}
         QA_BUILD_PATH: ${{ inputs.build-path }}
         QA_MODEL: ${{ inputs.model }}
+        QA_ARCH: ${{ inputs.arch }}
+        QA_PROMPT_VERSION: ${{ inputs.prompt-version }}
+        QA_REASONING_EFFORT: ${{ inputs.reasoning-effort }}
+        QA_REASONING_MAX_TOKENS: ${{ inputs.reasoning-max-tokens }}
+        QA_CONTENT_MAP_MODE: ${{ inputs.content-map-mode }}
+        QA_KNOWLEDGE_MODE: ${{ inputs.knowledge-mode }}
         QA_LAUNCH_TIMEOUT: ${{ inputs.launch-timeout }}
         QA_TIMEOUT: ${{ inputs.timeout }}
         QA_CLI_PATH: ${{ steps.prepare.outputs.cli-path }}/node_modules/@project-artel/cli/dist/cli.js

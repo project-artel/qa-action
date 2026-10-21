@@ -25,10 +25,39 @@ export function readOptions(env) {
   }
   const build = path.resolve(env.GITHUB_WORKSPACE || process.cwd(), required('QA_BUILD_PATH'));
   if (!statSync(build).isFile()) throw new Error('build-path must point to an executable file.');
+  let arch = env.QA_ARCH?.trim() || undefined;
+  if (arch) {
+    if (arch.startsWith('@')) {
+      arch = readFileSync(path.resolve(env.GITHUB_WORKSPACE || process.cwd(), arch.slice(1)), 'utf8');
+    }
+    let parsed;
+    try { parsed = JSON.parse(arch); }
+    catch { throw new Error('arch must contain valid JSON.'); }
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new Error('arch must be a JSON object.');
+    }
+    // 세부 필드는 서버가 검증한다. 새 구조 옵션을 Action이 차단하지 않는다.
+    arch = JSON.stringify(parsed);
+  }
+  const reasoningEffort = env.QA_REASONING_EFFORT?.trim() || undefined;
+  const reasoningMaxTokens = env.QA_REASONING_MAX_TOKENS?.trim() || undefined;
+  if (reasoningEffort && reasoningMaxTokens) throw new Error('Choose one reasoning input.');
+  if (reasoningMaxTokens && (!/^[1-9]\d*$/.test(reasoningMaxTokens) || !Number.isSafeInteger(Number(reasoningMaxTokens)))) {
+    throw new Error('reasoning-max-tokens must be a positive safe integer.');
+  }
+  const mode = (name, values) => {
+    const value = env[name]?.trim() || undefined;
+    if (value && !values.includes(value)) throw new Error(`${name} must be one of: ${values.join(', ')}.`);
+    return value;
+  };
   return {
     token: required('ARTEL_TOKEN'), project: required('QA_PROJECT_ID'),
     testRun: required('QA_TEST_RUN_ID'), build,
     model: env.QA_MODEL?.trim() || undefined,
+    arch, promptVersion: env.QA_PROMPT_VERSION?.trim() || undefined,
+    reasoningEffort, reasoningMaxTokens,
+    contentMapMode: mode('QA_CONTENT_MAP_MODE', ['on', 'frozen', 'off']),
+    knowledgeMode: mode('QA_KNOWLEDGE_MODE', ['learning', 'frozen', 'off']),
     launchTimeout: seconds('QA_LAUNCH_TIMEOUT'), timeout: seconds('QA_TIMEOUT'),
     cli: required('QA_CLI_PATH'), results: required('QA_RESULTS_PATH'),
   };
@@ -75,6 +104,12 @@ export async function verify(options, deps) {
     run = await deps.cli('start', ['qa', 'run', '--test-run', options.testRun,
       '--instance', game.instanceId,
       ...(options.model ? ['--model', options.model] : []),
+      ...(options.arch ? ['--arch', options.arch] : []),
+      ...(options.promptVersion ? ['--prompt-version', options.promptVersion] : []),
+      ...(options.reasoningEffort ? ['--reasoning-effort', options.reasoningEffort] : []),
+      ...(options.reasoningMaxTokens ? ['--reasoning-max-tokens', options.reasoningMaxTokens] : []),
+      ...(options.contentMapMode ? ['--content-map-mode', options.contentMapMode] : []),
+      ...(options.knowledgeMode ? ['--knowledge-mode', options.knowledgeMode] : []),
       '--no-wait', '--json'], 120000);
     if (!run.runId) throw new Error('QA creation did not return a run ID.');
     deps.output('run-id', run.runId);
