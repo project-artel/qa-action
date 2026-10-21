@@ -35,6 +35,7 @@ ARTEL console에서 발급한 CLI token을 저장소의 `ARTEL_TOKEN` secret으�
 | `project-id` | 예 | — | 게임과 test-run이 속한 project |
 | `test-run-id` | 예 | — | 실행할 시나리오 묶음 |
 | `build-path` | 예 | — | workspace 기준 또는 절대 실행 파일 경로 |
+| `model` | 아니요 | 서버 기본값 | `artel qa models`에서 확인한 모델 ID. 예: `claude/claude-sonnet-5-5` |
 | `api-url` | 아니요 | `https://stage-orch.artel.kr` | orchestration API |
 | `console-url` | 아니요 | `https://home.stage.artel.kr` | API와 짝인 console |
 | `cli-version` | 아니요 | `0.0.1-alpha.1` | 설치할 정확한 CLI 버전 |

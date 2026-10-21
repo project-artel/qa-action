@@ -28,6 +28,7 @@ export function readOptions(env) {
   return {
     token: required('ARTEL_TOKEN'), project: required('QA_PROJECT_ID'),
     testRun: required('QA_TEST_RUN_ID'), build,
+    model: env.QA_MODEL?.trim() || undefined,
     launchTimeout: seconds('QA_LAUNCH_TIMEOUT'), timeout: seconds('QA_TIMEOUT'),
     cli: required('QA_CLI_PATH'), results: required('QA_RESULTS_PATH'),
   };
@@ -72,7 +73,9 @@ export async function verify(options, deps) {
     deps.output('instance-id', game.instanceId);
     // run ID 를 먼저 보관해야 watch 시간 초과 뒤에도 서버의 run 을 취소할 수 있다.
     run = await deps.cli('start', ['qa', 'run', '--test-run', options.testRun,
-      '--instance', game.instanceId, '--no-wait', '--json'], 120000);
+      '--instance', game.instanceId,
+      ...(options.model ? ['--model', options.model] : []),
+      '--no-wait', '--json'], 120000);
     if (!run.runId) throw new Error('QA creation did not return a run ID.');
     deps.output('run-id', run.runId);
     result = await deps.cli('result', ['qa', 'watch', run.runId,

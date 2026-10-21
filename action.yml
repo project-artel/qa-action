@@ -16,6 +16,9 @@ inputs:
   build-path:
     description: Executable path, relative to the workspace or absolute.
     required: true
+  model:
+    description: ARTEL QA model ID. Leave empty to use the server default.
+    default: ''
   api-url:
     description: ARTEL orchestration API URL.
     default: https://stage-orch.artel.kr
@@ -77,6 +80,7 @@ runs:
         QA_PROJECT_ID: ${{ inputs.project-id }}
         QA_TEST_RUN_ID: ${{ inputs.test-run-id }}
         QA_BUILD_PATH: ${{ inputs.build-path }}
+        QA_MODEL: ${{ inputs.model }}
         QA_LAUNCH_TIMEOUT: ${{ inputs.launch-timeout }}
         QA_TIMEOUT: ${{ inputs.timeout }}
         QA_CLI_PATH: ${{ steps.prepare.outputs.cli-path }}/node_modules/@project-artel/cli/dist/cli.js

@@ -34,6 +34,14 @@ test('통과한 run 은 게임을 종료하고 PASSED 를 출력한다', async (
   assert.deepEqual(h.outputs, { 'instance-id': 'instance', 'run-id': 'run', verdict: 'PASSED' });
   assert.ok(h.calls[1][1].includes('--no-wait'));
   assert.ok(h.calls[0][1].includes('a build/Game.exe'));
+  assert.ok(!h.calls[1][1].includes('--model'));
+});
+
+test('선택한 모델을 QA 시작 요청에 전달한다', async () => {
+  const h = harness();
+  await verify({ ...options, model: 'claude/claude-sonnet-5-5' }, h.deps);
+  const args = h.calls.find(c => c[0] === 'start')[1];
+  assert.equal(args[args.indexOf('--model') + 1], 'claude/claude-sonnet-5-5');
 });
 
 for (const verdict of ['FAILED', null]) {
