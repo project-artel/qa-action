@@ -1,0 +1,94 @@
+name: ARTEL QA
+description: Launch an SDK-enabled game build and fail CI unless its ARTEL test run passes.
+branding:
+  icon: check-circle
+  color: blue
+inputs:
+  token:
+    description: ARTEL CLI token. Supply a GitHub Actions secret.
+    required: true
+  project-id:
+    description: ARTEL project containing the game and test run.
+    required: true
+  test-run-id:
+    description: Existing ARTEL test run containing the scenarios to execute.
+    required: true
+  build-path:
+    description: Executable path, relative to the workspace or absolute.
+    required: true
+  api-url:
+    description: ARTEL orchestration API URL.
+    default: https://stage-orch.artel.kr
+  console-url:
+    description: Console URL paired with the API.
+    default: https://home.stage.artel.kr
+  cli-version:
+    description: Exact published CLI version.
+    default: 0.0.1-alpha.1
+  launch-timeout:
+    description: Seconds to wait for game registration.
+    default: '120'
+  timeout:
+    description: Seconds to wait for the QA verdict.
+    default: '1800'
+outputs:
+  run-id:
+    description: Created QA run ID, including on verification failure.
+    value: ${{ steps.verify.outputs.run-id }}
+  instance-id:
+    description: Registered game instance ID.
+    value: ${{ steps.verify.outputs.instance-id }}
+  verdict:
+    description: PASSED, FAILED, or UNKNOWN.
+    value: ${{ steps.verify.outputs.verdict }}
+  results-path:
+    description: Local directory containing results and diagnostic logs.
+    value: ${{ steps.prepare.outputs.results-path }}
+  artifact-id:
+    description: Uploaded results artifact ID.
+    value: ${{ steps.upload.outputs.artifact-id }}
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v6
+      with:
+        node-version: '24'
+        package-manager-cache: 'false'
+    - id: prepare
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        CLI_VERSION: ${{ inputs.cli-version }}
+      run: node "$ACTION_PATH/scripts/prepare.mjs"
+    - name: Install ARTEL CLI
+      shell: bash
+      env:
+        CLI_DIR: ${{ steps.prepare.outputs.cli-path }}
+        CLI_VERSION: ${{ inputs.cli-version }}
+      run: npm install --prefix "$CLI_DIR" --ignore-scripts --no-audit --no-fund --package-lock=false "@project-artel/cli@$CLI_VERSION"
+    - name: Verify test run
+      id: verify
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        ARTEL_TOKEN: ${{ inputs.token }}
+        ARTEL_API_BASE_URL: ${{ inputs.api-url }}
+        ARTEL_CONSOLE_BASE_URL: ${{ inputs.console-url }}
+        QA_PROJECT_ID: ${{ inputs.project-id }}
+        QA_TEST_RUN_ID: ${{ inputs.test-run-id }}
+        QA_BUILD_PATH: ${{ inputs.build-path }}
+        QA_LAUNCH_TIMEOUT: ${{ inputs.launch-timeout }}
+        QA_TIMEOUT: ${{ inputs.timeout }}
+        QA_CLI_PATH: ${{ steps.prepare.outputs.cli-path }}/node_modules/@project-artel/cli/dist/cli.js
+        QA_RESULTS_PATH: ${{ steps.prepare.outputs.results-path }}
+        ARTEL_CONFIG_DIR: ${{ steps.prepare.outputs.config-path }}
+      run: node "$ACTION_PATH/scripts/run.mjs"
+    - name: Save ARTEL results
+      id: upload
+      if: ${{ always() && steps.prepare.outputs.results-path != '' }}
+      uses: actions/upload-artifact@v6
+      with:
+        name: ${{ steps.prepare.outputs.artifact-name }}
+        path: ${{ steps.prepare.outputs.results-path }}
+        if-no-files-found: warn
+        retention-days: 14

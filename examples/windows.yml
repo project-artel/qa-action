@@ -1,0 +1,28 @@
+# 게임 저장소의 기존 build job 과 같은 workflow 에 qa job 을 추가한다.
+# build job 은 전체 Windows player 디렉터리를 windows-player artifact 로 업로드해야 한다.
+name: ARTEL Windows TC 검증
+on:
+  workflow_dispatch:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  # 기존 build job 정의는 이 자리에 둔다.
+  qa:
+    needs: build
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/download-artifact@v5
+        with:
+          name: windows-player
+          path: Build
+      # 이 runner 의 렌더링 지원 여부는 실제 빌드로 먼저 검증한다.
+      - uses: project-artel/qa-action@v0.1.0-alpha.1
+        id: artel
+        with:
+          token: ${{ secrets.ARTEL_TOKEN }}
+          project-id: ${{ vars.ARTEL_PROJECT_ID }}
+          test-run-id: ${{ vars.ARTEL_TEST_RUN_ID }}
+          build-path: ./Build/Game.exe
