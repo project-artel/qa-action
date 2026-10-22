@@ -25,12 +25,68 @@ export function readOptions(env) {
   }
   const build = path.resolve(env.GITHUB_WORKSPACE || process.cwd(), required('QA_BUILD_PATH'));
   if (!statSync(build).isFile()) throw new Error('build-path must point to an executable file.');
+  let arch = env.QA_ARCH?.trim() || undefined;
+  if (arch) {
+    if (arch.startsWith('@')) {
+      arch = readFileSync(path.resolve(env.GITHUB_WORKSPACE || process.cwd(), arch.slice(1)), 'utf8');
+    }
+    let parsed;
+    try { parsed = JSON.parse(arch); }
+    catch { throw new Error('arch must contain valid JSON.'); }
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new Error('arch must be a JSON object.');
+    }
+    // 세부 필드는 서버가 검증한다. 새 구조 옵션을 Action이 차단하지 않는다.
+    arch = JSON.stringify(parsed);
+  }
+  const reasoningEffort = env.QA_REASONING_EFFORT?.trim() || undefined;
+  const reasoningMaxTokens = env.QA_REASONING_MAX_TOKENS?.trim() || undefined;
+  if (reasoningEffort && reasoningMaxTokens) throw new Error('Choose one reasoning input.');
+  if (reasoningMaxTokens && (!/^[1-9]\d*$/.test(reasoningMaxTokens) || !Number.isSafeInteger(Number(reasoningMaxTokens)))) {
+    throw new Error('reasoning-max-tokens must be a positive safe integer.');
+  }
+  const mode = (name, values) => {
+    const value = env[name]?.trim() || undefined;
+    if (value && !values.includes(value)) throw new Error(`${name} must be one of: ${values.join(', ')}.`);
+    return value;
+  };
+  const keySource = mode('QA_KEY_SOURCE', ['platform', 'user']) || 'platform';
+  if (keySource === 'user' && !env.QA_MODEL?.trim()) throw new Error('model is required for key-source=user.');
   return {
+    keySource, apiUrl: required('ARTEL_API_BASE_URL'),
     token: required('ARTEL_TOKEN'), project: required('QA_PROJECT_ID'),
     testRun: required('QA_TEST_RUN_ID'), build,
+    model: env.QA_MODEL?.trim() || undefined,
+    arch, promptVersion: env.QA_PROMPT_VERSION?.trim() || undefined,
+    reasoningEffort, reasoningMaxTokens,
+    contentMapMode: mode('QA_CONTENT_MAP_MODE', ['on', 'frozen', 'off']),
+    knowledgeMode: mode('QA_KNOWLEDGE_MODE', ['learning', 'frozen', 'off']),
     launchTimeout: seconds('QA_LAUNCH_TIMEOUT'), timeout: seconds('QA_TIMEOUT'),
     cli: required('QA_CLI_PATH'), results: required('QA_RESULTS_PATH'),
   };
+}
+
+// 배포된 CLI가 keySource를 지원하지 않아 개인 key의 실행 생성만 API로 보낸다.
+export async function startUserRun(options, instanceId, signal, fetchImpl = fetch) {
+  const body = {
+    testRunId: options.testRun, gameInstanceId: instanceId, model: options.model, keySource: 'user',
+    ...(options.arch ? { arch: JSON.parse(options.arch) } : {}),
+    ...(options.promptVersion ? { promptVersion: options.promptVersion } : {}),
+    ...(options.reasoningEffort ? { reasoning: { effort: options.reasoningEffort } } : {}),
+    ...(options.reasoningMaxTokens ? { reasoning: { maxTokens: Number(options.reasoningMaxTokens) } } : {}),
+    ...(options.contentMapMode ? { contentMapMode: options.contentMapMode } : {}),
+    ...(options.knowledgeMode ? { knowledgeMode: options.knowledgeMode } : {}),
+  };
+  const response = await fetchImpl(`${options.apiUrl.replace(/\/$/, '')}/api/qa-runs`, {
+    method: 'POST', redirect: 'error',
+    headers: { Authorization: `Bearer ${options.token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal: AbortSignal.any([AbortSignal.timeout(120000), ...(signal ? [signal] : [])]),
+  });
+  if (!response.ok) throw new Error(`Personal-key QA creation failed (HTTP ${response.status}). Check the registered model key in ARTEL.`);
+  const result = await response.json();
+  if (result.id == null || !/^\d+$/.test(String(result.id))) throw new Error('QA creation did not return a valid run ID.');
+  return { runId: String(result.id), keySource: 'user', model: options.model };
 }
 
 // shell 없이 argv 를 전달한다. 게임 경로와 ID 를 shell 코드로 해석하지 않는다.
@@ -71,8 +127,16 @@ export async function verify(options, deps) {
     }
     deps.output('instance-id', game.instanceId);
     // run ID 를 먼저 보관해야 watch 시간 초과 뒤에도 서버의 run 을 취소할 수 있다.
-    run = await deps.cli('start', ['qa', 'run', '--test-run', options.testRun,
-      '--instance', game.instanceId, '--no-wait', '--json'], 120000);
+    run = options.keySource === 'user' ? await deps.startUserRun(game.instanceId) : await deps.cli('start', ['qa', 'run', '--test-run', options.testRun,
+      '--instance', game.instanceId,
+      ...(options.model ? ['--model', options.model] : []),
+      ...(options.arch ? ['--arch', options.arch] : []),
+      ...(options.promptVersion ? ['--prompt-version', options.promptVersion] : []),
+      ...(options.reasoningEffort ? ['--reasoning-effort', options.reasoningEffort] : []),
+      ...(options.reasoningMaxTokens ? ['--reasoning-max-tokens', options.reasoningMaxTokens] : []),
+      ...(options.contentMapMode ? ['--content-map-mode', options.contentMapMode] : []),
+      ...(options.knowledgeMode ? ['--knowledge-mode', options.knowledgeMode] : []),
+      '--no-wait', '--json'], 120000);
     if (!run.runId) throw new Error('QA creation did not return a run ID.');
     deps.output('run-id', run.runId);
     result = await deps.cli('result', ['qa', 'watch', run.runId,
@@ -112,6 +176,11 @@ export async function main(env = process.env) {
     await verify(options, {
       output,
       stopGame,
+      startUserRun: async instanceId => {
+        const run = await startUserRun(options, instanceId, controller.signal);
+        writeFileSync(path.join(options.results, 'start.json'), clean(JSON.stringify(run)));
+        return run;
+      },
       cli: async (name, args, timeout, allowFailure = false, cleanup = false) => {
         if (!cleanup && controller.signal.aborted) throw new Error('ARTEL verification interrupted.');
         const response = await command(process.execPath, [options.cli, ...args], {

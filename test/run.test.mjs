@@ -3,10 +3,27 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { command, readOptions, verify } from '../scripts/run.mjs';
+import { command, readOptions, verify, startUserRun } from '../scripts/run.mjs';
 import { output, redact, escapeHtml } from '../scripts/workflow.mjs';
 
 const options = { build: 'a build/Game.exe', project: 'project', testRun: 'suite', launchTimeout: 5, timeout: 10 };
+test('개인 key 실행은 선택한 모델과 구조를 API에 보내고 key 원문은 보내지 않는다', async () => {
+  const run = await startUserRun({ ...options, apiUrl: 'https://example.com/', token: 'cli-token', model: 'claude/claude-sonnet-5-5', arch: '{"engine":"planner_executer"}' }, '42', undefined, async (url, request) => {
+    assert.equal(url, 'https://example.com/api/qa-runs');
+    assert.equal(request.headers.Authorization, 'Bearer cli-token');
+    assert.deepEqual(JSON.parse(request.body), { testRunId: 'suite', gameInstanceId: '42', model: 'claude/claude-sonnet-5-5', keySource: 'user', arch: { engine: 'planner_executer' } });
+    return new Response(JSON.stringify({ id: '134' }), { status: 201 });
+  });
+  assert.equal(run.runId, '134');
+  await assert.rejects(startUserRun({ ...options, apiUrl: 'https://example.com' }, '42', undefined, async () => new Response('private server error', { status: 401 })), /HTTP 401/);
+});
+
+test('개인 key 실행 생성 실패에도 게임을 종료하며 공용 key로 재시도하지 않는다', async () => {
+  const h = harness();
+  h.deps.startUserRun = async () => { throw new Error('personal key rejected'); };
+  await assert.rejects(verify({ ...options, keySource: 'user' }, h.deps), /personal key rejected/);
+  assert.deepEqual(h.calls.map(c => c[0]), ['launch', 'stop']);
+});
 function harness(overrides = {}) {
   const calls = [], outputs = {}, reports = [];
   const deps = {
@@ -34,6 +51,14 @@ test('통과한 run 은 게임을 종료하고 PASSED 를 출력한다', async (
   assert.deepEqual(h.outputs, { 'instance-id': 'instance', 'run-id': 'run', verdict: 'PASSED' });
   assert.ok(h.calls[1][1].includes('--no-wait'));
   assert.ok(h.calls[0][1].includes('a build/Game.exe'));
+  assert.ok(!h.calls[1][1].includes('--model'));
+});
+
+test('선택한 모델을 QA 시작 요청에 전달한다', async () => {
+  const h = harness();
+  await verify({ ...options, model: 'claude/claude-sonnet-5-5' }, h.deps);
+  const args = h.calls.find(c => c[0] === 'start')[1];
+  assert.equal(args[args.indexOf('--model') + 1], 'claude/claude-sonnet-5-5');
 });
 
 for (const verdict of ['FAILED', null]) {
@@ -122,6 +147,23 @@ test('필수 입력과 유한 timeout 을 검사한다', t => {
     QA_CLI_PATH: 'cli', QA_RESULTS_PATH: dir,
   };
   assert.equal(readOptions(env).build, path.join(dir, 'game'));
+  assert.equal(readOptions(env).arch, undefined);
+  assert.throws(() => readOptions({ ...env, QA_KEY_SOURCE: 'invalid' }), /QA_KEY_SOURCE/);
+  assert.throws(() => readOptions({ ...env, QA_KEY_SOURCE: 'user' }), /model is required/);
+  const planner = { engine: 'planner_executer' };
+  writeFileSync(path.join(dir, 'agent config.json'), JSON.stringify(planner));
+  assert.deepEqual(JSON.parse(readOptions({ ...env, QA_ARCH: '@agent config.json' }).arch), planner);
+  assert.deepEqual(JSON.parse(readOptions({ ...env, QA_ARCH: '{"new_option":false}' }).arch), { new_option: false });
+  for (const arch of ['null', '[]', '"text"', '{broken']) {
+    assert.throws(() => readOptions({ ...env, QA_ARCH: arch }), /arch/);
+  }
+  assert.throws(() => readOptions({ ...env, QA_ARCH: '@missing.json' }));
+  assert.throws(() => readOptions({ ...env, QA_REASONING_EFFORT: 'high', QA_REASONING_MAX_TOKENS: '1024' }), /one reasoning/);
+  for (const budget of ['0', '-1', '1.2', 'NaN']) {
+    assert.throws(() => readOptions({ ...env, QA_REASONING_MAX_TOKENS: budget }), /positive/);
+  }
+  assert.throws(() => readOptions({ ...env, QA_CONTENT_MAP_MODE: 'bad' }), /QA_CONTENT_MAP_MODE/);
+  assert.throws(() => readOptions({ ...env, QA_KNOWLEDGE_MODE: 'bad' }), /QA_KNOWLEDGE_MODE/);
   for (const bad of ['0', '-1', 'Infinity', '1.5', '90000']) {
     assert.throws(() => readOptions({ ...env, QA_TIMEOUT: bad }));
   }

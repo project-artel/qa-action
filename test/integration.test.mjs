@@ -24,6 +24,7 @@ if (group === 'game') {
   writeFileSync(path.join(logs, 'player.log'), 'game ' + process.env.ARTEL_TOKEN);
   console.log(JSON.stringify({ instanceId: 'instance-1', pid: child.pid }));
 } else if (action === 'run') {
+  writeFileSync(path.join(process.env.QA_RESULTS_PATH, 'args.json'), JSON.stringify(process.argv.slice(2)));
   console.log(JSON.stringify({ runId: 'run-1' }));
 } else if (action === 'cancel') {
   console.log(JSON.stringify({ cancelled: true }));
@@ -61,6 +62,8 @@ for (const scenario of ['pass', 'fail', 'disconnect']) {
         ARTEL_CONFIG_DIR: path.join(root, 'config'), QA_BUILD_PATH: build,
         QA_PROJECT_ID: 'project', QA_TEST_RUN_ID: 'suite', QA_CLI_PATH: cli,
         QA_LAUNCH_TIMEOUT: '10', QA_TIMEOUT: '10', QA_RESULTS_PATH: results,
+        QA_ARCH: JSON.stringify({ label: 'ci full', engine: 'agent', phase_cycle: 'full', skills: 'on_demand', macros: 'on', screen_capture: 'by_role', vision: 'auto', pulse_relevance: false, report_step_view: true, fold_stale_scenes: false, fold_stale_knowledge: true, fold_stale_skills: false, fold_stale_macro_results: true, fold_threshold_chars: 0, compaction: false }),
+        QA_REASONING_EFFORT: 'high', QA_PROMPT_VERSION: 'v24', QA_CONTENT_MAP_MODE: 'frozen', QA_KNOWLEDGE_MODE: 'off',
         GITHUB_OUTPUT: path.join(root, 'outputs'), GITHUB_STEP_SUMMARY: path.join(root, 'summary'),
       },
     });
@@ -68,6 +71,15 @@ for (const scenario of ['pass', 'fail', 'disconnect']) {
     const report = JSON.parse(readFileSync(path.join(results, 'summary.json'), 'utf8'));
     assert.equal(report.verdict, { pass: 'PASSED', fail: 'FAILED', disconnect: 'UNKNOWN' }[scenario]);
     assert.equal(report.warnings.length, 0);
+    const args = JSON.parse(readFileSync(path.join(results, 'args.json'), 'utf8'));
+    const arch = JSON.parse(args[args.indexOf('--arch') + 1]);
+    assert.equal(Object.keys(arch).length, 15);
+    assert.equal(arch.fold_threshold_chars, 0);
+    assert.equal(arch.compaction, false);
+    assert.equal(args[args.indexOf('--reasoning-effort') + 1], 'high');
+    assert.equal(args[args.indexOf('--prompt-version') + 1], 'v24');
+    assert.equal(args[args.indexOf('--content-map-mode') + 1], 'frozen');
+    assert.equal(args[args.indexOf('--knowledge-mode') + 1], 'off');
     assert.match(readFileSync(path.join(root, 'outputs'), 'utf8'), /run-1/);
     assert.match(readFileSync(path.join(root, 'summary'), 'utf8'), /ARTEL TC/);
     assert.equal(readdirSync(results).includes('cancel.json'), scenario === 'disconnect');
