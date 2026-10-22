@@ -53,7 +53,7 @@ export function readOptions(env) {
   const keySource = mode('QA_KEY_SOURCE', ['platform', 'user']) || 'platform';
   if (keySource === 'user' && !env.QA_MODEL?.trim()) throw new Error('model is required for key-source=user.');
   return {
-    keySource, apiUrl: required('ARTEL_API_BASE_URL'),
+    keySource, apiUrl: required('ARTEL_API_BASE_URL'), consoleUrl: required('ARTEL_CONSOLE_BASE_URL'),
     language: mode('QA_LANGUAGE', ['ko', 'en']),
     token: required('ARTEL_TOKEN'), project: required('QA_PROJECT_ID'),
     testRun: required('QA_TEST_RUN_ID'), build,
@@ -141,6 +141,7 @@ export async function verify(options, deps) {
       '--no-wait', '--json'], 120000);
     if (!run.runId) throw new Error('QA creation did not return a run ID.');
     deps.output('run-id', run.runId);
+    if (options.consoleUrl) deps.output('timeline-url', timelineUrl(options, run.runId));
     result = await deps.cli('result', ['qa', 'watch', run.runId,
       '--timeout', String(options.timeout), '--json'], (options.timeout + 30) * 1000, true);
     if (result.runId !== run.runId) throw new Error('QA result has a different run ID.');
@@ -165,6 +166,24 @@ export async function verify(options, deps) {
   }
   if (failure) throw failure;
   if (warnings.length) throw new Error(warnings.join(' '));
+}
+
+export function timelineUrl(options, runId) {
+  const base = new URL(options.consoleUrl);
+  base.search = '';
+  base.hash = '';
+  base.pathname = `${base.pathname.replace(/\/$/, '')}/projects/${encodeURIComponent(options.project)}/qa-runs/${encodeURIComponent(runId)}`;
+  return base.href;
+}
+
+export function reportSummary(options, report) {
+  const safe = value => escapeHtml(redact(value, options.token));
+  const timeline = report.run?.runId ? timelineUrl(options, report.run.runId) : null;
+  return `<h3>ARTEL TC 검증 결과</h3>\n<p>Status: <code>${safe(report.result?.status ?? 'UNKNOWN')}</code> · Verdict: <code>${safe(report.verdict)}</code></p>\n` +
+    `<p>Run: <code>${safe(report.run?.runId ?? '-')}</code></p>\n` +
+    (timeline ? `<p><a href="${safe(timeline)}">ARTEL QA timeline 열기</a></p>\n` : '') +
+    (report.failure ? `<p>${safe(report.failure)}</p>\n` : '') +
+    report.warnings.map(w => `<p>${safe(w)}</p>\n`).join('');
 }
 
 export async function main(env = process.env) {
@@ -211,12 +230,7 @@ export async function main(env = process.env) {
           }
         }
         if (env.GITHUB_STEP_SUMMARY) {
-          const safe = value => escapeHtml(clean(value));
-          appendFileSync(env.GITHUB_STEP_SUMMARY,
-            `<h3>ARTEL TC 검증 결과</h3>\n<p>Verdict: <code>${safe(report.verdict)}</code></p>\n` +
-            `<p>Run: <code>${safe(report.run?.runId ?? '-')}</code></p>\n` +
-            (report.failure ? `<p>${safe(report.failure)}</p>\n` : '') +
-            report.warnings.map(w => `<p>${safe(w)}</p>\n`).join(''));
+          appendFileSync(env.GITHUB_STEP_SUMMARY, reportSummary(options, report));
         }
       },
     });

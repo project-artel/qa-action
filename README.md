@@ -123,8 +123,8 @@ ARTEL 연결, screen capture까지 통과한 플랫폼은 아직 없습니다. �
 
 ## 결과와 로그를 확인한다
 
-`run-id`, `instance-id`, `verdict`, `results-path`, `artifact-id`를 step output으로 제공합니다.
-등록 이전 실패에서는 ID가 비어 있을 수 있습니다. Job summary에는 판정과 run ID가 표시됩니다.
+`run-id`, `timeline-url`, `instance-id`, `verdict`, `results-path`, `artifact-id`를 step output으로 제공합니다.
+등록 이전 실패에서는 ID가 비어 있을 수 있습니다. Job summary에는 서버 status, 판정, run ID와 QA timeline 링크가 표시됩니다. run 생성 이후 실패에도 링크를 유지합니다.
 `verdict` output만으로 CI 성공을 판단하지 마세요. 정리 실패 등은 `PASSED`여도 step을 실패시킵니다.
 
 각 호출은 고유한 `artel-qa-*` artifact를 남깁니다. `result.json`은 CLI 최종 결과,

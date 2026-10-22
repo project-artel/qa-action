@@ -59,6 +59,9 @@ inputs:
     description: Seconds to wait for the QA verdict.
     default: '1800'
 outputs:
+  timeline-url:
+    description: QA timeline URL, available after run creation even if verification fails.
+    value: ${{ steps.verify.outputs.timeline-url }}
   run-id:
     description: Created QA run ID, including on verification failure.
     value: ${{ steps.verify.outputs.run-id }}

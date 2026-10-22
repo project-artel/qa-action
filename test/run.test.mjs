@@ -3,10 +3,35 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { command, readOptions, verify, startApiRun } from '../scripts/run.mjs';
+import { command, readOptions, verify, startApiRun, timelineUrl, reportSummary } from '../scripts/run.mjs';
 import { output, redact, escapeHtml } from '../scripts/workflow.mjs';
 
 const options = { build: 'a build/Game.exe', project: 'project', testRun: 'suite', launchTimeout: 5, timeout: 10 };
+
+test('판정 없는 서버 실패도 timeline과 artifact 보고를 유지한다', async () => {
+  const h = harness({ result: { runId: 'run', status: 'FAILED', verdict: null, completedAt: '2026-10-22', commandExitCode: 1 } });
+  const selected = { ...options, consoleUrl: 'https://artel.kr/console/' };
+  await assert.rejects(verify(selected, h.deps), /UNKNOWN/);
+  assert.equal(h.outputs['timeline-url'], 'https://artel.kr/console/projects/project/qa-runs/run');
+  assert.equal(h.outputs.verdict, 'UNKNOWN');
+  assert.equal(h.calls.some(c => c[0] === 'cancel'), false);
+  assert.equal(h.calls.at(-1)[0], 'stop');
+  assert.match(reportSummary(selected, h.reports[0]), /href="https:\/\/artel.kr\/console\/projects\/project\/qa-runs\/run"/);
+  assert.match(reportSummary(selected, h.reports[0]), /Status: <code>FAILED/);
+});
+
+test('timeline URL은 base path를 유지하고 query와 hash를 제외한다', () => {
+  assert.equal(timelineUrl({ consoleUrl: 'https://example.com/console?token=secret#old', project: 'a/b' }, '1?x'),
+    'https://example.com/console/projects/a%2Fb/qa-runs/1%3Fx');
+});
+
+test('run 생성 전 실패에는 timeline 링크를 만들지 않고 HTML을 escape한다', () => {
+  const html = reportSummary({ consoleUrl: 'https://example.com', token: 'secret' },
+    { verdict: 'UNKNOWN', run: null, failure: '<script>secret</script>', warnings: [] });
+  assert.ok(!html.includes('href='));
+  assert.ok(!html.includes('<script>'));
+  assert.ok(!html.includes('secret'));
+});
 for (const keySource of ['platform', 'user']) {
   test(`${keySource} 실행에서 선택한 언어와 고급 설정을 API에 전달한다`, async () => {
     const selected = { ...options, apiUrl: 'https://example.com', keySource, language: 'ko', model: 'claude/claude-sonnet-5-5', promptVersion: 'v3' };
