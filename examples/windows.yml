@@ -19,7 +19,7 @@ jobs:
           name: windows-player
           path: Build
       # 이 runner 의 렌더링 지원 여부는 실제 빌드로 먼저 검증한다.
-      - uses: project-artel/qa-action@v0.1.0-alpha.1
+      - uses: project-artel/qa-action@v0.1.0
         id: artel
         with:
           token: ${{ secrets.ARTEL_TOKEN }}
