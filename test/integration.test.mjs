@@ -82,6 +82,8 @@ for (const scenario of ['pass', 'fail', 'disconnect']) {
     assert.equal(args[args.indexOf('--knowledge-mode') + 1], 'off');
     assert.match(readFileSync(path.join(root, 'outputs'), 'utf8'), /run-1/);
     assert.match(readFileSync(path.join(root, 'summary'), 'utf8'), /ARTEL TC/);
+    assert.match(readFileSync(path.join(root, 'summary'), 'utf8'), /href="https:\/\/console.example.com\/projects\/project\/qa-runs\/run-1"/);
+    assert.match(readFileSync(path.join(root, 'outputs'), 'utf8'), /timeline-url<</);
     assert.equal(readdirSync(results).includes('cancel.json'), scenario === 'disconnect');
     for (const file of readdirSync(results)) {
       assert.ok(!readFileSync(path.join(results, file), 'utf8').includes('fixture-secret-never-log'), file);

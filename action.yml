@@ -22,6 +22,9 @@ inputs:
   key-source:
     description: Model API key source (platform or user). User uses the ARTEL token owner's registered key and requires model.
     default: platform
+  language:
+    description: ARTEL explanation and verdict language (ko or en). Does not change the game language.
+    default: ''
   arch:
     description: Agent architecture JSON object, or @path to a JSON file relative to the workspace. Empty uses server defaults.
     default: ''
@@ -56,6 +59,9 @@ inputs:
     description: Seconds to wait for the QA verdict.
     default: '1800'
 outputs:
+  timeline-url:
+    description: QA timeline URL, available after run creation even if verification fails.
+    value: ${{ steps.verify.outputs.timeline-url }}
   run-id:
     description: Created QA run ID, including on verification failure.
     value: ${{ steps.verify.outputs.run-id }}
@@ -103,6 +109,7 @@ runs:
         QA_BUILD_PATH: ${{ inputs.build-path }}
         QA_MODEL: ${{ inputs.model }}
         QA_KEY_SOURCE: ${{ inputs.key-source }}
+        QA_LANGUAGE: ${{ inputs.language }}
         QA_ARCH: ${{ inputs.arch }}
         QA_PROMPT_VERSION: ${{ inputs.prompt-version }}
         QA_REASONING_EFFORT: ${{ inputs.reasoning-effort }}
