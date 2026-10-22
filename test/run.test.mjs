@@ -3,24 +3,44 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { command, readOptions, verify, startUserRun } from '../scripts/run.mjs';
+import { command, readOptions, verify, startApiRun } from '../scripts/run.mjs';
 import { output, redact, escapeHtml } from '../scripts/workflow.mjs';
 
 const options = { build: 'a build/Game.exe', project: 'project', testRun: 'suite', launchTimeout: 5, timeout: 10 };
+for (const keySource of ['platform', 'user']) {
+  test(`${keySource} 실행에서 선택한 언어와 고급 설정을 API에 전달한다`, async () => {
+    const selected = { ...options, apiUrl: 'https://example.com', keySource, language: 'ko', model: 'claude/claude-sonnet-5-5', promptVersion: 'v3' };
+    await startApiRun(selected, '42', undefined, async (_, request) => {
+      const body = JSON.parse(request.body);
+      assert.equal(body.language, 'ko');
+      assert.equal(body.keySource, keySource);
+      assert.equal(body.promptVersion, 'v3');
+      return new Response(JSON.stringify({ id: '134' }), { status: 201 });
+    });
+    const h = harness();
+    h.deps.startApiRun = async instance => {
+      assert.equal(instance, 'instance');
+      h.calls.push(['api']);
+      return { runId: 'run' };
+    };
+    await verify(selected, h.deps);
+    assert.deepEqual(h.calls.map(c => c[0]), ['launch', 'api', 'result', 'stop']);
+  });
+}
 test('개인 key 실행은 선택한 모델과 구조를 API에 보내고 key 원문은 보내지 않는다', async () => {
-  const run = await startUserRun({ ...options, apiUrl: 'https://example.com/', token: 'cli-token', model: 'claude/claude-sonnet-5-5', arch: '{"engine":"planner_executer"}' }, '42', undefined, async (url, request) => {
+  const run = await startApiRun({ ...options, apiUrl: 'https://example.com/', token: 'cli-token', keySource: 'user', model: 'claude/claude-sonnet-5-5', arch: '{"engine":"planner_executer"}' }, '42', undefined, async (url, request) => {
     assert.equal(url, 'https://example.com/api/qa-runs');
     assert.equal(request.headers.Authorization, 'Bearer cli-token');
     assert.deepEqual(JSON.parse(request.body), { testRunId: 'suite', gameInstanceId: '42', model: 'claude/claude-sonnet-5-5', keySource: 'user', arch: { engine: 'planner_executer' } });
     return new Response(JSON.stringify({ id: '134' }), { status: 201 });
   });
   assert.equal(run.runId, '134');
-  await assert.rejects(startUserRun({ ...options, apiUrl: 'https://example.com' }, '42', undefined, async () => new Response('private server error', { status: 401 })), /HTTP 401/);
+  await assert.rejects(startApiRun({ ...options, apiUrl: 'https://example.com' }, '42', undefined, async () => new Response('private server error', { status: 401 })), /HTTP 401/);
 });
 
 test('개인 key 실행 생성 실패에도 게임을 종료하며 공용 key로 재시도하지 않는다', async () => {
   const h = harness();
-  h.deps.startUserRun = async () => { throw new Error('personal key rejected'); };
+  h.deps.startApiRun = async () => { throw new Error('personal key rejected'); };
   await assert.rejects(verify({ ...options, keySource: 'user' }, h.deps), /personal key rejected/);
   assert.deepEqual(h.calls.map(c => c[0]), ['launch', 'stop']);
 });
@@ -148,6 +168,9 @@ test('필수 입력과 유한 timeout 을 검사한다', t => {
   };
   assert.equal(readOptions(env).build, path.join(dir, 'game'));
   assert.equal(readOptions(env).arch, undefined);
+  assert.equal(readOptions(env).language, undefined);
+  for (const language of ['ko', 'en']) assert.equal(readOptions({ ...env, QA_LANGUAGE: language }).language, language);
+  assert.throws(() => readOptions({ ...env, QA_LANGUAGE: 'kr' }), /QA_LANGUAGE/);
   assert.throws(() => readOptions({ ...env, QA_KEY_SOURCE: 'invalid' }), /QA_KEY_SOURCE/);
   assert.throws(() => readOptions({ ...env, QA_KEY_SOURCE: 'user' }), /model is required/);
   const planner = { engine: 'planner_executer' };

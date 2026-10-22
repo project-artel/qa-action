@@ -37,6 +37,7 @@ ARTEL console에서 발급한 CLI token을 저장소의 `ARTEL_TOKEN` secret으�
 | `build-path` | 예 | — | workspace 기준 또는 절대 실행 파일 경로 |
 | `model` | 아니요 | 서버 기본값 | `artel qa models`에서 확인한 모델 ID. 예: `claude/claude-sonnet-5-5` |
 | `key-source` | 아니요 | `platform` | `user`면 ARTEL_TOKEN 소유 계정에 등록된 개인 모델 key 사용. model 필수 |
+| `language` | 아니요 | 서버 기본값 | ARTEL 설명·검증 결과의 언어: `ko`, `en`. 게임 언어는 변경하지 않음 |
 | `arch` | 아니요 | 서버 기본값 | 구조 JSON 또는 workspace 기준 `@파일경로` |
 | `prompt-version` | 아니요 | 서버 기본값 | QA prompt 버전 |
 | `reasoning-effort` | 아니요 | 서버 기본값 | 모델이 지원하는 reasoning effort |
@@ -53,8 +54,12 @@ ARTEL console에서 발급한 CLI token을 저장소의 `ARTEL_TOKEN` secret으�
 
 개인 Sonnet key를 사용하려면 `model: claude/claude-sonnet-5-5`와 `key-source: user`를
 지정합니다. Anthropic key는 ARTEL 계정에 등록하며 GitHub에는 복사하지 않습니다.
-개인 key 오류 시 공용 key로 재시도하지 않습니다. 현재 CLI에는 keySource 옵션이 없어
-개인 key의 실행 생성은 Action이 ARTEL API를 직접 호출하고, 게임 실행과 결과 대기는 CLI를 사용합니다.
+개인 key 오류 시 공용 key로 재시도하지 않습니다. 현재 CLI에는 keySource와 language 옵션이 없어
+개인 key나 언어를 지정하면 Action이 ARTEL API로 실행을 생성하고, 게임 실행과 결과 대기는 CLI를 사용합니다.
+
+`language: ko`는 ARTEL의 자연어 설명과 검증 결과를 한국어로 요청합니다. 게임 UI, 코드 식별자,
+오류 코드와 원본 진단 로그는 번역하지 않습니다. `planner_executer`는 출력 언어를 지원하는
+agent-server 버전이 필요합니다. 이전 서버에서는 설정이 기록돼도 영어로 답할 수 있습니다.
 
 콘솔의 QA 고급 설정과 같은 JSON을 `arch`로 전달합니다. 바꾸지 않을 필드는 생략합니다.
 Action은 필드를 제거하거나 기본값을 덮어쓰지 않으며, 세부 값의 지원 여부는 실행 서버가 검증합니다.
@@ -63,6 +68,8 @@ Action은 필드를 제거하거나 기본값을 덮어쓰지 않으며, 세부 
 with:
   # token, project-id, test-run-id, build-path는 앞의 예시처럼 지정합니다.
   model: claude/claude-sonnet-5-5
+  key-source: user
+  language: ko
   arch: '{"engine":"planner_executer"}'
 ```
 
