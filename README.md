@@ -36,6 +36,7 @@ ARTEL console에서 발급한 CLI token을 저장소의 `ARTEL_TOKEN` secret으�
 | `test-run-id` | 예 | — | 실행할 시나리오 묶음 |
 | `build-path` | 예 | — | workspace 기준 또는 절대 실행 파일 경로 |
 | `model` | 아니요 | 서버 기본값 | `artel qa models`에서 확인한 모델 ID. 예: `claude/claude-sonnet-5-5` |
+| `key-source` | 아니요 | `platform` | `user`면 ARTEL_TOKEN 소유 계정에 등록된 개인 모델 key 사용. model 필수 |
 | `arch` | 아니요 | 서버 기본값 | 구조 JSON 또는 workspace 기준 `@파일경로` |
 | `prompt-version` | 아니요 | 서버 기본값 | QA prompt 버전 |
 | `reasoning-effort` | 아니요 | 서버 기본값 | 모델이 지원하는 reasoning effort |
@@ -49,6 +50,11 @@ ARTEL console에서 발급한 CLI token을 저장소의 `ARTEL_TOKEN` secret으�
 | `timeout` | 아니요 | `1800` | QA 결과 대기 시간(초) |
 
 ### Agent 구조 설정
+
+개인 Sonnet key를 사용하려면 `model: claude/claude-sonnet-5-5`와 `key-source: user`를
+지정합니다. Anthropic key는 ARTEL 계정에 등록하며 GitHub에는 복사하지 않습니다.
+개인 key 오류 시 공용 key로 재시도하지 않습니다. 현재 CLI에는 keySource 옵션이 없어
+개인 key의 실행 생성은 Action이 ARTEL API를 직접 호출하고, 게임 실행과 결과 대기는 CLI를 사용합니다.
 
 콘솔의 QA 고급 설정과 같은 JSON을 `arch`로 전달합니다. 바꾸지 않을 필드는 생략합니다.
 Action은 필드를 제거하거나 기본값을 덮어쓰지 않으며, 세부 값의 지원 여부는 실행 서버가 검증합니다.

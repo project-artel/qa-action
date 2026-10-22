@@ -50,7 +50,10 @@ export function readOptions(env) {
     if (value && !values.includes(value)) throw new Error(`${name} must be one of: ${values.join(', ')}.`);
     return value;
   };
+  const keySource = mode('QA_KEY_SOURCE', ['platform', 'user']) || 'platform';
+  if (keySource === 'user' && !env.QA_MODEL?.trim()) throw new Error('model is required for key-source=user.');
   return {
+    keySource, apiUrl: required('ARTEL_API_BASE_URL'),
     token: required('ARTEL_TOKEN'), project: required('QA_PROJECT_ID'),
     testRun: required('QA_TEST_RUN_ID'), build,
     model: env.QA_MODEL?.trim() || undefined,
@@ -61,6 +64,29 @@ export function readOptions(env) {
     launchTimeout: seconds('QA_LAUNCH_TIMEOUT'), timeout: seconds('QA_TIMEOUT'),
     cli: required('QA_CLI_PATH'), results: required('QA_RESULTS_PATH'),
   };
+}
+
+// 배포된 CLI가 keySource를 지원하지 않아 개인 key의 실행 생성만 API로 보낸다.
+export async function startUserRun(options, instanceId, signal, fetchImpl = fetch) {
+  const body = {
+    testRunId: options.testRun, gameInstanceId: instanceId, model: options.model, keySource: 'user',
+    ...(options.arch ? { arch: JSON.parse(options.arch) } : {}),
+    ...(options.promptVersion ? { promptVersion: options.promptVersion } : {}),
+    ...(options.reasoningEffort ? { reasoning: { effort: options.reasoningEffort } } : {}),
+    ...(options.reasoningMaxTokens ? { reasoning: { maxTokens: Number(options.reasoningMaxTokens) } } : {}),
+    ...(options.contentMapMode ? { contentMapMode: options.contentMapMode } : {}),
+    ...(options.knowledgeMode ? { knowledgeMode: options.knowledgeMode } : {}),
+  };
+  const response = await fetchImpl(`${options.apiUrl.replace(/\/$/, '')}/api/qa-runs`, {
+    method: 'POST', redirect: 'error',
+    headers: { Authorization: `Bearer ${options.token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    signal: AbortSignal.any([AbortSignal.timeout(120000), ...(signal ? [signal] : [])]),
+  });
+  if (!response.ok) throw new Error(`Personal-key QA creation failed (HTTP ${response.status}). Check the registered model key in ARTEL.`);
+  const result = await response.json();
+  if (result.id == null || !/^\d+$/.test(String(result.id))) throw new Error('QA creation did not return a valid run ID.');
+  return { runId: String(result.id), keySource: 'user', model: options.model };
 }
 
 // shell 없이 argv 를 전달한다. 게임 경로와 ID 를 shell 코드로 해석하지 않는다.
@@ -101,7 +127,7 @@ export async function verify(options, deps) {
     }
     deps.output('instance-id', game.instanceId);
     // run ID 를 먼저 보관해야 watch 시간 초과 뒤에도 서버의 run 을 취소할 수 있다.
-    run = await deps.cli('start', ['qa', 'run', '--test-run', options.testRun,
+    run = options.keySource === 'user' ? await deps.startUserRun(game.instanceId) : await deps.cli('start', ['qa', 'run', '--test-run', options.testRun,
       '--instance', game.instanceId,
       ...(options.model ? ['--model', options.model] : []),
       ...(options.arch ? ['--arch', options.arch] : []),
@@ -150,6 +176,11 @@ export async function main(env = process.env) {
     await verify(options, {
       output,
       stopGame,
+      startUserRun: async instanceId => {
+        const run = await startUserRun(options, instanceId, controller.signal);
+        writeFileSync(path.join(options.results, 'start.json'), clean(JSON.stringify(run)));
+        return run;
+      },
       cli: async (name, args, timeout, allowFailure = false, cleanup = false) => {
         if (!cleanup && controller.signal.aborted) throw new Error('ARTEL verification interrupted.');
         const response = await command(process.execPath, [options.cli, ...args], {

@@ -19,6 +19,9 @@ inputs:
   model:
     description: ARTEL QA model ID. Leave empty to use the server default.
     default: ''
+  key-source:
+    description: Model API key source (platform or user). User uses the ARTEL token owner's registered key and requires model.
+    default: platform
   arch:
     description: Agent architecture JSON object, or @path to a JSON file relative to the workspace. Empty uses server defaults.
     default: ''
@@ -99,6 +102,7 @@ runs:
         QA_TEST_RUN_ID: ${{ inputs.test-run-id }}
         QA_BUILD_PATH: ${{ inputs.build-path }}
         QA_MODEL: ${{ inputs.model }}
+        QA_KEY_SOURCE: ${{ inputs.key-source }}
         QA_ARCH: ${{ inputs.arch }}
         QA_PROMPT_VERSION: ${{ inputs.prompt-version }}
         QA_REASONING_EFFORT: ${{ inputs.reasoning-effort }}
